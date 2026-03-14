@@ -11,7 +11,7 @@ function [n, m] = zernidx2nm(p,conType)
 %       'ANSI': OSA/ANSI single-index; [default]
 %           Thibos, L. N.; Applegate, R. A.; Schwiegerling, J. T.; Webb, R. (2002).
 %           "Standards for reporting the optical aberrations of eyes" (PDF). 
-%           Journal of Refractive Surgery. 18 (5): S652–60
+%           Journal of Refractive Surgery. 18 (5): S652â€“60
 %       'Fringe': Fringe indices, 'Wyant' + 1;
 %       'Wyant': Wyant indices , used in HASO;
 %       'NOLL': NOLL indices;
