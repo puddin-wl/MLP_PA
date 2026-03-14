@@ -39,15 +39,29 @@ end
 length2phase = 2*pi/lambda;
 coeffs = length2phase * coeffs;
 
-% Define the pupil coordinates (Polar coordinate system) 
-[r, theta, idx] = def_pupilcoor(Sx, pixelSize, lambda, NA);
-r0 = r(idx);
-theta0 = theta(idx);
+% ===== 替换开始：生成匹配神经网络的正方形坐标系 =====
+% 为了让对角线的最大半径 r 刚好等于 1，x 和 y 的边界应当是 1/sqrt(2)
+% 这样在四个角点：r = sqrt((1/sqrt(2))^2 + (1/sqrt(2))^2) = 1
+limit = 1 / sqrt(2); 
 
-phi = zeros(Sx, Sy, 'single');
-phi(idx) = create_wavefront(p,coeffs,r0,theta0); % in phase unit: pi
-pupilMask = zeros(Sx, Sy, 'single');
-pupilMask(idx) = 1;
+% 生成等间隔的正方形网格
+x = linspace(-limit, limit, Sx);
+y = linspace(-limit, limit, Sy);
+[X, Y] = meshgrid(x, y);
+
+% 转换为极坐标
+[theta_full, r_full] = cart2pol(X, Y);
+
+% 因为没有裁剪，所有的像素都是有效像素
+% 我们需要将矩阵展平为列向量传入 create_wavefront
+phi_vec = create_wavefront(p, coeffs, r_full(:), theta_full(:)); 
+
+% 将输出的一维向量重新塑形为 2D 正方形矩阵
+phi = reshape(phi_vec, Sx, Sy);
+
+% 因为是正方形全通相位，所以 pupilMask 是一个全为 1 的矩阵
+pupilMask = ones(Sx, Sy, 'single');
+% ===== 替换结束 =====
 pupilFun = pupilMask.*exp(1i*phi);
 if(flag3D == 0) % 2D PSF at focal plane
     prf = fftshift(ifft2(ifftshift(pupilFun)));
