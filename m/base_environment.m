@@ -18,14 +18,14 @@ y = linspace(-limit, limit, Ny);
 % 设定一个较大的畸变系数代表严重的介质散射
 base_coeffs_um = gen_zern_coeffs(p, 1.0, 'random1'); 
 base_coeffs_rad = (2 * pi / lambda) * base_coeffs_um;
-base_waveFront_vec = create_wavefront(p, base_coeffs_rad, r_full(:), theta_full(:));
+base_waveFront_vec = create_wavefront(p, base_coeffs_rad, r_full(:), theta_full(:), 'norm', 'NOLL');
 waveFront_2D_base = reshape(base_waveFront_vec, Ny, Nx);
 
 %% 3. 准备目标图像并补零 (修改为鲁棒读取版)
 img_size = 256;
 
 % ！！！请在这里换成你自己的 tif 图片路径！！！
-img = imread('volume11.tif'); 
+img = imread('volume87.tif'); 
 
 % 3.1 处理多通道问题：如果是 RGB 或多通道图，强制转换为单通道灰度图
 if size(img, 3) == 3
