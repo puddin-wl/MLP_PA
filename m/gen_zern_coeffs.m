@@ -39,39 +39,30 @@ switch zernType
         c(p==9) = aValue; 
     case 'sphe'
         c(p==12) = aValue; 
-    case 'random1'
-    % 生成符号数组：+1 或 -1
-    signs = 2 * randi([0,1], 1, zernNum) - 1;  
-
-    % 生成幅度数组，其他模式范围 [0.1, aValue]
-    % mags = 0.1+aValue.* rand(1, zernNum);
-    mags=aValue;
-    % 针对 p==4 的模式生成更大的幅度 [aValue, 2*aValue]
-    % idx = (p == 4);
-    % mags(idx) = aValue .* rand(1, sum(idx));
-
-    % 组合得到最终随机系数
-    c = signs .* mags;
-
-    % 排除指定的 Zernike 模式（保留 p==4）
-    c(p==1) = 0;  % exclude tilt1
-    c(p==2) = 0;  % exclude tilt2
-    
     % case 'random1'
-    %     % 生成符号数组：+1 或 -1
-    %     signs = 2 * randi([0,1], 1, zernNum) - 1;  
-    % 
-    %     % 生成幅度数组，范围 [0.1, aValue]
-    %     mags = 0.2 + (aValue - 0.2) .* rand(1, zernNum);
-    % 
-    %     % 组合得到最终随机系数
-    %     c = signs .* mags;
-    % 
-    %     % 排除指定的 Zernike 模式
-    %     c(p==1) = 0;  % exclude tilt1
-    %     c(p==2) = 0;  % exclude tilt2
-    %     %c(p==4) = 0;  % exclude defocus
+    %     a = -aValue; b = aValue;
+    %     cRandom = a + (b-a).*rand(1,zernNum); 
+    %     c = cRandom;
+    %     c(p==1) = 0; % exclude tilt1;
+    %     c(p==2) = 0; % exclude tilt2;
+    %     c(p==4) = 0; % exclude defocus;
 
+    case 'random1'
+        % 采用高斯分布 (正态分布 randn)，完美契合 NeuWS 论文的 SLM 调制设定
+        % 这里的 aValue 就相当于论文里的标准差 (Standard Deviation)
+        cRandom = aValue .* randn(1, zernNum); 
+        c = cRandom;
+        
+        % 【极其重要】配合上一轮我们修改的 'NOLL' 排序标准！
+        % 在 NOLL 标准中：
+        % j=1: Piston (整体相位平移，对成像无影响，必须排除)
+        % j=2: Tip (X方向倾斜，会导致图像整体平移)
+        % j=3: Tilt (Y方向倾斜，会导致图像整体平移)
+        % j=4: Defocus (离焦)
+        c(p==1) = 0; % exclude Piston
+        c(p==2) = 0; % exclude Tip
+        c(p==3) = 0; % exclude Tilt
+        % c(p==4) = 0; % 是否排除离焦(Defocus)取决于你的实验需要，论文中没有强制排除
     case 'random2'
         a1 = -aValue; b1 = aValue;
         cLength1 = 14-p(1) + 1; % Z14
