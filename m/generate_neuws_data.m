@@ -1,63 +1,83 @@
+% 程序 2：generate_neuws_dataset.m
+% 目标：在底层散射环境中叠加 SLM 随机相位，生成 100 组网络训练数据
 clear; clc; close all;
 
-%% 1. 物理参数与系数设定
-Nx = 1080; 
-Ny = 1080;
-lambda = 0.532; % 波长 (um)
-p = 1:15;       % 使用前 15 阶 Zernike 模式
-aValue = 0.1;   % 系数幅值 (um)
+%% 1. 加载底层散射环境 (程序 1 生成的结果)
+load('base_environment.mat'); 
+% 这会载入: base_coeffs_um, waveFront_2D_base, padded_img, Nx, Ny, start_idx, end_idx, p, lambda, r_full, theta_full
 
-% 生成随机像差系数 (单位: um)
-coeffs_um = gen_zern_coeffs(p, aValue, 'random1'); 
+%% 2. 实验参数设置
+num_samples = 100;     % 生成 100 组数据
+slm_aValue = 0.5;      % SLM 随机调制的幅值 (um)，可以比底层畸变(1.0)略小
+output_dir = 'dataset_neuws'; % 保存数据的文件夹名称
 
-%% 2. 坐标系建立 (匹配神经网络对角线逻辑)
-x = linspace(-1, 1, Nx);
-y = linspace(-1, 1, Ny); 
-[X, Y] = meshgrid(x, y);
-[theta, r] = cart2pol(X, Y);
+if ~exist(output_dir, 'dir')
+    mkdir(output_dir);
+end
 
-% 对角线最大半径归一化为 1
-max_r = max(r(:));
-r_norm = r / max_r; 
+disp(['开始生成 ', num2str(num_samples), ' 组数据集...']);
 
-%% 3. 生成相位 (Phase)
-% 关键：将微米(um)转换为弧度(rad)，确保物理尺度正确
-length2phase = 2 * pi / lambda;
-coeffs_rad = length2phase * coeffs_um;
+%% 3. 循环生成数据
+for idx = 1:num_samples
+    
+    % 3.1 生成第 idx 个 SLM 的随机相位
+    slm_coeffs_um = gen_zern_coeffs(p, slm_aValue, 'random1'); 
+    slm_coeffs_rad = (2 * pi / lambda) * slm_coeffs_um;
+    
+    % 注意：强烈建议你在 create_wavefront 函数里强制使用 'NOLL' 排序，以匹配 Python 源码！
+    % 如果 create_wavefront 还不支持传参，请确保底层调用的 zernfun 是 Noll 排序。
+    slm_waveFront_vec = create_wavefront(p, slm_coeffs_rad, r_full(:), theta_full(:), 'norm', 'NOLL');
+    waveFront_2D_slm = reshape(slm_waveFront_vec, Ny, Nx);
+    
+    % 3.2 物理光学叠加：总相位 = 组织散射相位 + SLM 相位
+    % (对应网络前向传播中的 H_aber * H_slm)
+    total_waveFront = waveFront_2D_base + waveFront_2D_slm;
+    
+    % 3.3 计算叠加后的系统总 PSF
+    pupilFun_total = ones(Ny, Nx) .* exp(1i * total_waveFront);
+    prf_total = fftshift(ifft2(ifftshift(pupilFun_total)));
+    PSF_total = abs(prf_total).^2;
+    PSF_total_norm = PSF_total / sum(PSF_total(:)); % 能量守恒归一化
+    
+    % 3.4 卷积成像 (频域加速)
+    O_f = fft2(ifftshift(padded_img));
+    H_f_total = fft2(ifftshift(PSF_total_norm));
+    blurred_padded_total = real(fftshift(ifft2(O_f .* H_f_total)));
+    
+    % 3.5 截取中心有效区域 (256x256 探测器/重构区域)
+    final_captured_img = blurred_padded_total(start_idx:end_idx, start_idx:end_idx);
+    
+    % 3.6 将 SLM 相位缩小至 256x256 (为了送入网络)
+    % 网络期望的输入分辨率是 256x256，而不是原始的 1080x1080
+    proj_sim = imresize(waveFront_2D_slm, [256, 256]);
+    imsdata = final_captured_img;
+    
+    % 3.7 保存为 NeuWS 网络要求的 .mat 格式和变量名
+    slm_filename = fullfile(output_dir, sprintf('SLM_sim%d.mat', idx));
+    img_filename = fullfile(output_dir, sprintf('SLM_raw%d.mat', idx));
+    
+    save(slm_filename, 'proj_sim');
+    save(img_filename, 'imsdata');
+    
+    % 打印进度
+    if mod(idx, 10) == 0
+        fprintf('已生成 %d / %d 组数据\n', idx, num_samples);
+    end
+end
 
-% 生成展平的波前，并重塑为 2D 矩形矩阵
-waveFront_vec = create_wavefront(p, coeffs_rad, r_norm(:), theta(:));
-waveFront_2D = reshape(waveFront_vec, Ny, Nx);
+disp('数据集生成完毕！可以送给 Python 端训练了。');
 
-%% 4. 从相位直接生成 PSF (保证 100% 对应)
-% 因为你使用的是正方形全光束，所以振幅掩膜全为 1
-pupilFun = 1.0 .* exp(1i * waveFront_2D); 
+%% 4. 可视化最后一组的结果做个检查
+figure('Name', 'Sample Checking', 'Position', [200, 200, 1200, 400]);
 
-% 通过逆傅里叶变换计算焦平面的点扩散函数 (PSF)
-prf = fftshift(ifft2(ifftshift(pupilFun)));
-PSF = abs(prf).^2;
+subplot(1,3,1);
+imagesc(waveFront_2D_base); colormap(gca, 'jet'); colorbar; axis image off;
+title('Base Tissue Aberration');
 
-% 归一化 PSF
-PSF = PSF / max(PSF(:)); 
+subplot(1,3,2);
+imagesc(waveFront_2D_slm); colormap(gca, 'jet'); colorbar; axis image off;
+title(['SLM Modulation #', num2str(num_samples)]);
 
-%% 5. 可视化验证与保存
-figure('Name', 'Matched Phase and PSF', 'Position', [100, 100, 1000, 450]);
-
-% 显示送入神经网络的相位
-subplot(1,2,1);
-imagesc(waveFront_2D);
-colormap(gca, 'jet'); 
-colorbar;
-title('Saved Phase Pattern (rad)');
-axis image; axis off;
-
-% 显示用于卷积图片的 PSF
-subplot(1,2,2);
-imagesc(PSF);
-colormap(gca, 'hot'); 
-colorbar;
-title('Corresponding 2D PSF');
-axis image; axis off;
-
-% 在这里你可以添加代码将 waveFront_2D 和 PSF 导出为 .mat 或图片供 Python 读取
-% save('sim_data.mat', 'waveFront_2D', 'PSF');
+subplot(1,3,3);
+imagesc(imsdata); colormap(gca, 'gray'); colorbar; axis image off;
+title(['Captured Speckle Image #', num2str(num_samples)]);
