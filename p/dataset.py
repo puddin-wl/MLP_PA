@@ -9,8 +9,8 @@ class BatchDataset(torch.utils.data.Dataset):
     def __init__(self, data_dir, im_prefix='SLM_raw', slm_prefix='SLM_sim', num=100, max_intensity=0, zero_freq=-1):
         self.data_dir = data_dir
         self.zero_freq = zero_freq
-        a_slm = np.ones((144, 256))
-        a_slm = np.pad(a_slm, (((256 - 144) // 2, (256 - 144) // 2), (0, 0)), 'constant', constant_values=(0, 0))
+        a_slm = np.ones((256, 256))
+        # a_slm = np.pad(a_slm, (((256 - 144) // 2, (256 - 144) // 2), (0, 0)), 'constant', constant_values=(0, 0))
         self.a_slm = torch.from_numpy(a_slm).type(torch.float)
         self.max_intensity = max_intensity
         self.num = num
@@ -28,7 +28,7 @@ class BatchDataset(torch.utils.data.Dataset):
             try:
                 p_SLM = sio.loadmat(f'{mat_name}')
                 p_SLM = p_SLM['proj_sim']
-                p_SLM = np.pad(p_SLM, (((256 - 144) // 2, (256 - 144) // 2), (0, 0)), 'constant', constant_values=(0, 0)) #np.pad
+                # p_SLM = np.pad(p_SLM, (((256 - 144) // 2, (256 - 144) // 2), (0, 0)), 'constant', constant_values=(0, 0)) #np.pad
                 p_SLM_train = torch.FloatTensor(p_SLM).unsqueeze(0)
 
                 if self.zero_freq > 0 and idx % self.zero_freq == 0:
@@ -57,5 +57,3 @@ class BatchDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, idx):
         return self.xs[idx], self.ys[idx], idx
-
-
