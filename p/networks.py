@@ -210,10 +210,24 @@ class TemporalZernNet(nn.Module):
         self.g_im = G_PatchTensor(width)
 
         if not use_pe:
-            self.basis = nn.Parameter(compute_zernike_basis(
-                num_polynomials=28,
-                field_res=(PSF_size, PSF_size)).permute(1, 2, 0).unsqueeze(0).repeat(bsize, 1, 1, 1),
-                requires_grad=False)
+            # 1. 先生成 28 阶完整的 Zernike 基底特征
+            zern_basis = compute_zernike_basis(
+                num_polynomials=15,
+                field_res=(PSF_size, PSF_size)
+            )
+
+            # 2. 强制没收低阶积木！将前 4 阶特征图全部强制清零：
+            # 索引 0: Piston (整体平移)
+            # 索引 1: Tip (X方向倾斜)
+            # 索引 2: Tilt (Y方向倾斜)
+            # 索引 3: Defocus (离焦，即那滩水的中心凹陷)
+            zern_basis[0:4, :, :] = 0.0
+
+            # 3. 按照原逻辑，将修改后的特征图转为 Parameter
+            self.basis = nn.Parameter(
+                zern_basis.permute(1, 2, 0).unsqueeze(0).repeat(bsize, 1, 1, 1),
+                requires_grad=False
+            )
         else:
             xs = torch.linspace(-1, 1, steps=PSF_size)
             ys = torch.linspace(-1, 1, steps=PSF_size)
